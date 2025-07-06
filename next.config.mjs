@@ -1,7 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Remove output: 'standalone' for better compatibility
-  
   // Image optimization settings
   images: {
     remotePatterns: [
@@ -33,19 +31,6 @@ const nextConfig = {
   // Experimental features for better compatibility
   experimental: {
     esmExternals: 'loose',
-  },
-
-  // Webpack configuration for better compatibility
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-      };
-    }
-    return config;
   },
 };
 

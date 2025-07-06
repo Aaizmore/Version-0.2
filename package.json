@@ -4,11 +4,8 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "build:cloudflare": "next build",
-    "deploy": "wrangler pages deploy .next --project-name=minimalist-blog",
     "dev": "next dev",
     "lint": "next lint --fix",
-    "preview": "wrangler pages dev .next --port=3000",
     "start": "next start",
     "type-check": "tsc --noEmit"
   },
