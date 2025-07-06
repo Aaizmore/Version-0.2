@@ -74,6 +74,13 @@ export function ImageUpload({ onImageAdd, onImageRemove, images, maxImages = 5 }
             })
             return { success: false, fileName: file.name }
           }
+        } catch (error: any) {
+          toast({
+            title: "Upload failed",
+            description: `Error uploading ${file.name}: ${error.message}`,
+            variant: "destructive",
+          })
+          return { success: false, fileName: file.name }
         } finally {
           setUploadingFiles((prev) => {
             const newSet = new Set(prev)
@@ -101,7 +108,7 @@ export function ImageUpload({ onImageAdd, onImageRemove, images, maxImages = 5 }
           variant: "destructive",
         })
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Upload failed",
         description: "There was an error uploading your images.",
@@ -109,6 +116,10 @@ export function ImageUpload({ onImageAdd, onImageRemove, images, maxImages = 5 }
       })
     } finally {
       setIsUploading(false)
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
     }
   }
 
@@ -119,7 +130,11 @@ export function ImageUpload({ onImageAdd, onImageRemove, images, maxImages = 5 }
 
     if (user && imageUrl.includes("supabase")) {
       // Only try to delete if it's a Supabase Storage URL
-      await deleteImage(imageUrl, user.id)
+      try {
+        await deleteImage(imageUrl, user.id)
+      } catch (error) {
+        console.error("Error deleting image:", error)
+      }
     }
 
     onImageRemove(imageUrl)
@@ -143,6 +158,10 @@ export function ImageUpload({ onImageAdd, onImageRemove, images, maxImages = 5 }
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileUpload(e.dataTransfer.files)
     }
+  }
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleFileUpload(e.target.files)
   }
 
   return (
@@ -196,7 +215,7 @@ export function ImageUpload({ onImageAdd, onImageRemove, images, maxImages = 5 }
             accept="image/*"
             multiple
             className="hidden"
-            onChange={(e) => handleFileUpload(e.target.files)}
+            onChange={handleFileInputChange}
           />
         </CardContent>
       </Card>

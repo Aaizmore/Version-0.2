@@ -21,7 +21,7 @@ export async function uploadImage(file: File, userId: string): Promise<UploadRes
     }
 
     // Generate unique filename
-    const fileExt = file.name.split(".").pop()
+    const fileExt = file.name.split(".").pop()?.toLowerCase() || "jpg"
     const fileName = `${userId}/${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
 
     // Upload to Supabase Storage
@@ -35,10 +35,18 @@ export async function uploadImage(file: File, userId: string): Promise<UploadRes
       return { success: false, error: error.message }
     }
 
+    if (!data?.path) {
+      return { success: false, error: "Upload failed - no file path returned" }
+    }
+
     // Get public URL
     const {
       data: { publicUrl },
     } = supabase.storage.from("blog-images").getPublicUrl(data.path)
+
+    if (!publicUrl) {
+      return { success: false, error: "Failed to get public URL" }
+    }
 
     return { success: true, url: publicUrl }
   } catch (error: any) {
@@ -55,6 +63,12 @@ export async function deleteImage(imageUrl: string, userId: string): Promise<boo
     const url = new URL(imageUrl)
     const pathParts = url.pathname.split("/")
     const fileName = pathParts[pathParts.length - 1]
+
+    if (!fileName) {
+      console.error("Could not extract filename from URL")
+      return false
+    }
+
     const filePath = `${userId}/${fileName}`
 
     const { error } = await supabase.storage.from("blog-images").remove([filePath])

@@ -15,7 +15,8 @@ import { generateSlug } from "@/lib/utils/slug"
 import { useToast } from "@/hooks/use-toast"
 import { cleanupUnusedImages } from "@/lib/utils/image-cleanup"
 import type { Post } from "@/lib/types"
-import { Save, Eye } from "lucide-react"
+import { Save, Eye, ArrowLeft } from "lucide-react"
+import Link from "next/link"
 
 interface PostFormProps {
   post?: Post
@@ -62,29 +63,53 @@ export function PostForm({ post, isEditing = false }: PostFormProps) {
   }
 
   const ensureUserProfile = async (user: any) => {
-    // Check if profile exists
-    const { data: existingProfile } = await supabase.from("profiles").select("id").eq("id", user.id).single()
+    try {
+      // Check if profile exists
+      const { data: existingProfile } = await supabase.from("profiles").select("id").eq("id", user.id).single()
 
-    if (!existingProfile) {
-      // Create profile if it doesn't exist
-      const { error: profileError } = await supabase.from("profiles").insert([
-        {
-          id: user.id,
-          email: user.email,
-          full_name: user.user_metadata?.full_name || "",
-          avatar_url: user.user_metadata?.avatar_url || "",
-        },
-      ])
+      if (!existingProfile) {
+        // Create profile if it doesn't exist
+        const { error: profileError } = await supabase.from("profiles").insert([
+          {
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || "",
+            avatar_url: user.user_metadata?.avatar_url || "",
+          },
+        ])
 
-      if (profileError) {
-        console.error("Error creating profile:", profileError)
-        throw new Error("Failed to create user profile")
+        if (profileError) {
+          console.error("Error creating profile:", profileError)
+          throw new Error("Failed to create user profile")
+        }
       }
+    } catch (error) {
+      console.error("Profile creation error:", error)
+      throw error
     }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!title.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Title is required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (!content.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Content is required",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsLoading(true)
 
     try {
@@ -106,10 +131,10 @@ export function PostForm({ post, isEditing = false }: PostFormProps) {
 
       const slug = generateSlug(title)
       const postData = {
-        title,
+        title: title.trim(),
         slug,
-        content,
-        excerpt: excerpt || null,
+        content: content.trim(),
+        excerpt: excerpt.trim() || null,
         featured_image: featuredImage || null,
         images: images.length > 0 ? images : null,
         published,
@@ -136,26 +161,31 @@ export function PostForm({ post, isEditing = false }: PostFormProps) {
       } else {
         // Clean up unused images if editing
         if (isEditing) {
-          const allUsedImages = [...images]
-          // Get all images from all user's posts to avoid deleting images used elsewhere
-          const { data: userPosts } = await supabase
-            .from("posts")
-            .select("images, featured_image")
-            .eq("author_id", user.id)
+          try {
+            const allUsedImages = [...images]
+            // Get all images from all user's posts to avoid deleting images used elsewhere
+            const { data: userPosts } = await supabase
+              .from("posts")
+              .select("images, featured_image")
+              .eq("author_id", user.id)
 
-          if (userPosts) {
-            userPosts.forEach((userPost) => {
-              if (userPost.images) {
-                allUsedImages.push(...userPost.images)
-              }
-              if (userPost.featured_image) {
-                allUsedImages.push(userPost.featured_image)
-              }
-            })
+            if (userPosts) {
+              userPosts.forEach((userPost) => {
+                if (userPost.images) {
+                  allUsedImages.push(...userPost.images)
+                }
+                if (userPost.featured_image) {
+                  allUsedImages.push(userPost.featured_image)
+                }
+              })
+            }
+
+            // Clean up unused images
+            await cleanupUnusedImages(user.id, allUsedImages)
+          } catch (cleanupError) {
+            console.error("Cleanup error:", cleanupError)
+            // Don't fail the post save for cleanup issues
           }
-
-          // Clean up unused images
-          await cleanupUnusedImages(user.id, allUsedImages)
         }
 
         toast({
@@ -178,11 +208,20 @@ export function PostForm({ post, isEditing = false }: PostFormProps) {
   }
 
   const handlePreview = () => {
+    if (!title.trim() || !content.trim()) {
+      toast({
+        title: "Preview Error",
+        description: "Title and content are required for preview",
+        variant: "destructive",
+      })
+      return
+    }
+
     // Store current form data in localStorage for preview
     const previewData = {
-      title,
-      content,
-      excerpt,
+      title: title.trim(),
+      content: content.trim(),
+      excerpt: excerpt.trim(),
       featured_image: featuredImage,
       images,
       published,
@@ -193,6 +232,15 @@ export function PostForm({ post, isEditing = false }: PostFormProps) {
 
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+      <div className="mb-6">
+        <Button variant="ghost" asChild className="mb-4">
+          <Link href="/" className="flex items-center gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Posts
+          </Link>
+        </Button>
+      </div>
+
       <Card className="max-w-4xl mx-auto glass-morphism">
         <CardHeader>
           <CardTitle className="font-serif text-xl sm:text-2xl text-gradient">
@@ -203,7 +251,7 @@ export function PostForm({ post, isEditing = false }: PostFormProps) {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="title" className="text-gray-700 font-medium">
-                Title
+                Title *
               </Label>
               <Input
                 id="title"
@@ -242,7 +290,7 @@ export function PostForm({ post, isEditing = false }: PostFormProps) {
 
             <div className="space-y-2">
               <Label htmlFor="content" className="text-gray-700 font-medium">
-                Content
+                Content *
               </Label>
               <Textarea
                 id="content"
@@ -276,6 +324,7 @@ export function PostForm({ post, isEditing = false }: PostFormProps) {
                 type="button"
                 variant="outline"
                 onClick={handlePreview}
+                disabled={!title.trim() || !content.trim()}
                 className="flex-1 sm:flex-none border-royal-200 hover:bg-royal-50 bg-transparent"
               >
                 <Eye className="h-4 w-4 mr-2" />

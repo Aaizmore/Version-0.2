@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { UserNav } from "@/components/auth/user-nav"
-import { PenTool, GraduationCap } from "lucide-react"
+import { PenTool, GraduationCap, Loader2 } from "lucide-react"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
@@ -11,13 +11,34 @@ import type { User } from "@supabase/supabase-js"
 
 export function Navbar() {
   const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
-    // Listen for future auth state changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => setUser(s?.user ?? null))
-    return () => listener.subscription.unsubscribe()
+    const getUser = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        setUser(user)
+      } catch (error) {
+        console.error("Error fetching user:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    getUser()
+
+    // Listen for auth state changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
+
+    return () => subscription.unsubscribe()
   }, [supabase])
 
   return (
@@ -43,7 +64,11 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-4">
-            {user ? (
+            {loading ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </div>
+            ) : user ? (
               <>
                 <Button
                   asChild

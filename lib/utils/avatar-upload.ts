@@ -8,50 +8,63 @@ export interface AvatarUploadResult {
 
 // Compress and resize image before upload
 export function compressImage(file: File, maxWidth = 200, quality = 0.9): Promise<File> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const canvas = document.createElement("canvas")
-    const ctx = canvas.getContext("2d")!
+    const ctx = canvas.getContext("2d")
     const img = new Image()
 
+    if (!ctx) {
+      reject(new Error("Could not get canvas context"))
+      return
+    }
+
     img.onload = () => {
-      // Calculate new dimensions (square crop)
-      const size = Math.min(img.width, img.height)
-      const offsetX = (img.width - size) / 2
-      const offsetY = (img.height - size) / 2
+      try {
+        // Calculate new dimensions (square crop)
+        const size = Math.min(img.width, img.height)
+        const offsetX = (img.width - size) / 2
+        const offsetY = (img.height - size) / 2
 
-      // Set canvas size
-      canvas.width = maxWidth
-      canvas.height = maxWidth
+        // Set canvas size
+        canvas.width = maxWidth
+        canvas.height = maxWidth
 
-      // Draw and crop image to square
-      ctx.drawImage(
-        img,
-        offsetX,
-        offsetY,
-        size,
-        size, // Source rectangle (square crop)
-        0,
-        0,
-        maxWidth,
-        maxWidth, // Destination rectangle
-      )
+        // Draw and crop image to square
+        ctx.drawImage(
+          img,
+          offsetX,
+          offsetY,
+          size,
+          size, // Source rectangle (square crop)
+          0,
+          0,
+          maxWidth,
+          maxWidth, // Destination rectangle
+        )
 
-      // Convert to blob with higher quality for better preservation
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            const compressedFile = new File([blob], file.name, {
-              type: "image/jpeg",
-              lastModified: Date.now(),
-            })
-            resolve(compressedFile)
-          } else {
-            resolve(file)
-          }
-        },
-        "image/jpeg",
-        quality,
-      )
+        // Convert to blob with higher quality for better preservation
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name, {
+                type: "image/jpeg",
+                lastModified: Date.now(),
+              })
+              resolve(compressedFile)
+            } else {
+              reject(new Error("Failed to compress image"))
+            }
+          },
+          "image/jpeg",
+          quality,
+        )
+      } catch (error) {
+        reject(error)
+      }
+    }
+
+    img.onerror = () => {
+      reject(new Error("Failed to load image"))
     }
 
     img.src = URL.createObjectURL(file)
@@ -73,14 +86,21 @@ export async function uploadAvatar(file: File, userId: string): Promise<AvatarUp
     }
 
     // Compress and resize image with higher quality
-    const compressedFile = await compressImage(file, 400, 0.9) // Larger size and higher quality
+    let compressedFile: File
+    try {
+      compressedFile = await compressImage(file, 400, 0.9)
+    } catch (error) {
+      console.error("Image compression failed:", error)
+      // Use original file if compression fails
+      compressedFile = file
+    }
 
     // Generate unique filename with timestamp to ensure uniqueness
     const timestamp = Date.now()
     const fileExt = "jpg"
     const fileName = `${userId}/avatar-${timestamp}.${fileExt}`
 
-    // Upload new avatar (don't delete old ones immediately for backup)
+    // Upload new avatar
     const { data, error } = await supabase.storage.from("avatars").upload(fileName, compressedFile, {
       cacheControl: "31536000", // Cache for 1 year
       upsert: false, // Don't overwrite, create new file
@@ -91,14 +111,20 @@ export async function uploadAvatar(file: File, userId: string): Promise<AvatarUp
       return { success: false, error: error.message }
     }
 
+    if (!data?.path) {
+      return { success: false, error: "Upload failed - no file path returned" }
+    }
+
     // Get public URL
     const {
       data: { publicUrl },
     } = supabase.storage.from("avatars").getPublicUrl(data.path)
 
-    // Update profile with new avatar URL and backup old URL
-    const { data: currentProfile } = await supabase.from("profiles").select("avatar_url").eq("id", userId).single()
+    if (!publicUrl) {
+      return { success: false, error: "Failed to get public URL" }
+    }
 
+    // Update profile with new avatar URL
     const { error: updateError } = await supabase
       .from("profiles")
       .update({
@@ -119,7 +145,7 @@ export async function uploadAvatar(file: File, userId: string): Promise<AvatarUp
         // Sort by created date and keep only the 3 most recent
         const sortedFiles = files
           .filter((file) => file.name.startsWith("avatar-"))
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
           .slice(3) // Get files to delete (all except the 3 most recent)
 
         if (sortedFiles.length > 0) {
@@ -146,13 +172,19 @@ export async function deleteAvatar(userId: string): Promise<boolean> {
     const { data: profile } = await supabase.from("profiles").select("avatar_url").eq("id", userId).single()
 
     if (profile?.avatar_url) {
-      // Extract filename from URL
-      const url = new URL(profile.avatar_url)
-      const pathParts = url.pathname.split("/")
-      const fileName = pathParts[pathParts.length - 1]
+      try {
+        // Extract filename from URL
+        const url = new URL(profile.avatar_url)
+        const pathParts = url.pathname.split("/")
+        const fileName = pathParts[pathParts.length - 1]
 
-      // Delete from storage
-      await supabase.storage.from("avatars").remove([`${userId}/${fileName}`])
+        if (fileName) {
+          // Delete from storage
+          await supabase.storage.from("avatars").remove([`${userId}/${fileName}`])
+        }
+      } catch (urlError) {
+        console.error("Error parsing avatar URL:", urlError)
+      }
     }
 
     // Update profile to remove avatar URL
