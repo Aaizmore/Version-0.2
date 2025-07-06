@@ -1,7 +1,9 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import type { User as SupabaseUser } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,10 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { User, LogOut, PenTool, Settings } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { useState, useEffect } from "react"
-import type { User as SupabaseUser } from "@supabase/supabase-js"
+import { Button } from "@/components/ui/button"
+import { LogOut, PenTool, Settings, User } from "lucide-react"
 
 interface UserNavProps {
   user: SupabaseUser
@@ -25,57 +25,47 @@ interface Profile {
 }
 
 export function UserNav({ user }: UserNavProps) {
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const router = useRouter()
   const supabase = createClient()
+  const router = useRouter()
+  const [profile, setProfile] = useState<Profile | null>(null)
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const { data } = await supabase.from("profiles").select("avatar_url, full_name").eq("id", user.id).single()
-        if (data) {
-          setProfile(data)
-        }
-      } catch (error) {
-        console.error("Error fetching profile:", error)
-      }
+    const loadProfile = async () => {
+      const { data } = await supabase.from("profiles").select("avatar_url, full_name").eq("id", user.id).single()
+      setProfile(data as Profile)
     }
+    loadProfile()
+  }, [supabase, user.id])
 
-    fetchProfile()
-  }, [user.id, supabase])
+  const displayName = profile?.full_name || user.email || "User"
+  const initials = displayName
+    .split(" ")
+    .map((part: string) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2)
 
-  const handleSignOut = async () => {
+  const signOut = async () => {
     await supabase.auth.signOut()
     router.push("/")
     router.refresh()
   }
 
-  const displayName = profile?.full_name || user.user_metadata?.full_name || user.email || "User"
-  const initials = displayName
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2)
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-          <Avatar className="h-10 w-10 ring-2 ring-gold-200 hover:ring-gold-300 transition-all duration-300">
-            <AvatarImage src={profile?.avatar_url || "/placeholder.svg"} alt={displayName} className="object-cover" />
-            <AvatarFallback className="bg-gradient-to-br from-royal-100 to-gold-100 text-royal-700 font-semibold">
-              {initials}
-            </AvatarFallback>
+        <Button variant="ghost" className="h-10 w-10 rounded-full">
+          <Avatar className="h-10 w-10 ring-2 ring-gold-200">
+            <AvatarImage src={profile?.avatar_url || "/placeholder.svg"} alt={displayName} />
+            <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
-        <div className="flex items-center justify-start gap-2 p-2">
-          <div className="flex flex-col space-y-1 leading-none">
-            <p className="font-medium">{displayName}</p>
-            <p className="w-[200px] truncate text-sm text-muted-foreground">{user.email}</p>
-          </div>
+
+      <DropdownMenuContent align="end" className="w-56">
+        <div className="px-2 py-1.5">
+          <p className="font-medium leading-none">{displayName}</p>
+          <p className="truncate text-xs text-muted-foreground">{user.email}</p>
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => router.push("/write")}>
@@ -91,7 +81,7 @@ export function UserNav({ user }: UserNavProps) {
           Edit Profile
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleSignOut}>
+        <DropdownMenuItem onClick={signOut}>
           <LogOut className="mr-2 h-4 w-4" />
           Sign Out
         </DropdownMenuItem>
