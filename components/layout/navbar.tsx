@@ -1,15 +1,24 @@
+"use client"
+
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { UserNav } from "@/components/auth/user-nav"
-import { createClient } from "@/lib/supabase/server"
 import { PenTool, GraduationCap } from "lucide-react"
 import Image from "next/image"
+import { createClient } from "@/lib/supabase/client"
+import { useEffect, useState } from "react"
+import type { User } from "@supabase/supabase-js"
 
-export async function Navbar() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export function Navbar() {
+  const [user, setUser] = useState<User | null>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUser(data.user))
+    // Listen for future auth state changes
+    const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => setUser(s?.user ?? null))
+    return () => listener.subscription.unsubscribe()
+  }, [supabase])
 
   return (
     <nav className="border-b border-white/20 glass-morphism sticky top-0 z-50">
