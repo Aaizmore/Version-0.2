@@ -1,0 +1,21 @@
+# Handle Next.js routing on Cloudflare Pages
+
+# API routes - these should be handled by Next.js
+/api/* /api/:splat 200
+
+# Auth routes
+/auth/callback /auth/callback 200
+/auth/confirm /auth/confirm 200
+/auth/auth-code-error /auth/auth-code-error 200
+/auth /auth 200
+
+# Dynamic routes
+/post/* /post/:splat 200
+/write/* /write/:splat 200
+
+# Static routes
+/preview /preview 200
+/profile /profile 200
+
+# Fallback for client-side routing
+/* /index.html 200
